@@ -89,15 +89,47 @@ where
         self.wait_for_high(delay)?;
 
         self.set_bus_low()?;
-        delay.delay_us(480); // Maxim recommended wait time
 
+        // Reset pulse length is 480 µs minimum, 960 µs maximum
+        delay.delay_us(720);
         self.release_bus()?;
-        delay.delay_us(70); // Maxim recommended wait time
 
-        let device_present = self.is_bus_low()?;
+        // Wait for presence pulse, 15 µs minimum, 60 µs maximum
+        delay.delay_us(15);
 
-        delay.delay_us(410); // Maxim recommended wait time
+        let device_present = self.is_device_present(delay)?;
+
+        delay.delay_us(15);
         Ok(device_present)
+    }
+
+    fn is_device_present(&mut self, delay: &mut impl DelayNs) -> OneWireResult<bool, E> {
+        let mut pulse_time = 0;
+
+        // Wait for presence pulse, 15 µs minimum, 60 µs maximum
+        while self.is_bus_high()? && pulse_time < 60 {
+            pulse_time += 1;
+            delay.delay_us(1);
+        }
+
+        // No presence pulse detected
+        if pulse_time >= 60 {
+            return Ok(false);
+        }
+
+        // Presence pulse detected, pulse length is 60 µs minimum, 240 µs maximum
+        pulse_time = 0;
+        while self.is_bus_low()? && pulse_time < 240 {
+            pulse_time += 1;
+            delay.delay_us(1);
+        }
+
+        // Check whether the pulse length is valid
+        if pulse_time < 60 || pulse_time >= 240 {
+            return Ok(false);
+        }
+
+        Ok(true)
     }
 
     pub fn read_bit(&mut self, delay: &mut impl DelayNs) -> OneWireResult<bool, E> {
