@@ -125,7 +125,7 @@ where
         }
 
         // Check whether the pulse length is valid
-        if pulse_time < 60 || pulse_time >= 240 {
+        if pulse_time < 20 || pulse_time >= 240 {
             return Ok(false);
         }
 
