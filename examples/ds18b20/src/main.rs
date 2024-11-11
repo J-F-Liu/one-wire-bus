@@ -13,19 +13,24 @@ use embedded_hal::digital::{ErrorType, InputPin, OutputPin};
 use one_wire_bus::OneWire;
 use {defmt_rtt as _, panic_probe as _};
 
-pub struct InoutPin<'d, T: Pin> {
+pub const PUSH_PULL: bool = true;
+pub const OPEN_DRAIN: bool = false;
+
+pub struct InoutPin<'d, T: Pin, const M: bool> {
     pin: Flex<'d, T>,
-    is_push_pull: bool,
     is_input: bool,
 }
 
-impl<'d, T: Pin> InoutPin<'d, T> {
-    pub fn new(pin: impl Peripheral<P = T> + 'd, is_push_pull: bool) -> Self {
+impl<'d, T: Pin, const M: bool> InoutPin<'d, T, M> {
+    pub fn new(pin: impl Peripheral<P = T> + 'd) -> Self {
         let mut flex = Flex::new(pin);
-        flex.set_as_output(Speed::High);
+        if M == PUSH_PULL {
+            flex.set_as_output(Speed::High);
+        } else {
+            flex.set_as_input_output(Speed::High, Pull::None);
+        }
         Self {
             pin: flex,
-            is_push_pull,
             is_input: false,
         }
     }
@@ -39,7 +44,7 @@ impl<'d, T: Pin> InoutPin<'d, T> {
 
     pub fn set_as_output(&mut self) {
         if self.is_input {
-            if self.is_push_pull {
+            if M == PUSH_PULL {
                 self.pin.set_as_output(Speed::High);
             } else {
                 self.pin.set_as_input_output(Speed::High, Pull::None);
@@ -49,11 +54,11 @@ impl<'d, T: Pin> InoutPin<'d, T> {
     }
 }
 
-impl<'d, T: Pin> ErrorType for InoutPin<'d, T> {
+impl<'d, T: Pin, const M: bool> ErrorType for InoutPin<'d, T, M> {
     type Error = Infallible;
 }
 
-impl<'d, T: Pin> InputPin for InoutPin<'d, T> {
+impl<'d, T: Pin, const M: bool> InputPin for InoutPin<'d, T, M> {
     fn is_high(&mut self) -> Result<bool, Self::Error> {
         self.set_as_input();
         Ok(self.pin.is_high())
@@ -65,7 +70,7 @@ impl<'d, T: Pin> InputPin for InoutPin<'d, T> {
     }
 }
 
-impl<'d, T: Pin> OutputPin for InoutPin<'d, T> {
+impl<'d, T: Pin, const M: bool> OutputPin for InoutPin<'d, T, M> {
     fn set_high(&mut self) -> Result<(), Self::Error> {
         self.set_as_output();
         Ok(self.pin.set_high())
@@ -86,7 +91,7 @@ async fn main(_spawner: Spawner) {
     let pin = p.PE3;
 
     // If the DS18B20 is powered from an external VCC, use push pull mode, otherwise use open drain mode.
-    let one_wire_pin = InoutPin::new(pin, true);
+    let one_wire_pin = InoutPin::<_, PUSH_PULL>::new(pin);
 
     let mut delay = Delay;
     let mut sensor = OneWire::new(one_wire_pin).expect("Pin should be high during idle");
@@ -102,8 +107,8 @@ use embedded_hal::delay::DelayNs;
 
 /// Read temperature from a single DS18B20 sensor.
 /// If there are multiple sensors on the bus, a more complex procedure is required.
-fn read_temperature<'d, T: Pin>(
-    sensor: &mut OneWire<InoutPin<'d, T>>,
+fn read_temperature<'d, T: Pin, const M: bool>(
+    sensor: &mut OneWire<InoutPin<'d, T, M>>,
     delay: &mut impl DelayNs,
 ) -> f32 {
     // send convert temperature command
